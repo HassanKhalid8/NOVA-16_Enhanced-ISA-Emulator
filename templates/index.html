@@ -1,0 +1,1293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NOVA-16 ISA Emulator</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=Orbitron:wght@400;700;900&display=swap');
+:root {
+  --bg:     #080a0f;
+  --bg2:    #0d1017;
+  --bg3:    #111520;
+  --bg4:    #161b28;
+  --bg5:    #1c2235;
+  --border: #1e2438;
+  --bord2:  #262d42;
+  --bord3:  #2e3650;
+  --text:   #b8c4e0;
+  --dim:    #4a5270;
+  --muted:  #6b7599;
+  --green:  #00f593;
+  --green2: #00a863;
+  --green3: rgba(0,245,147,.08);
+  --blue:   #3b9eff;
+  --blue2:  #1a6fd4;
+  --blue3:  rgba(59,158,255,.08);
+  --amber:  #ffb830;
+  --amber3: rgba(255,184,48,.08);
+  --red:    #ff4f6b;
+  --red3:   rgba(255,79,107,.08);
+  --purple: #b06aff;
+  --purp3:  rgba(176,106,255,.08);
+  --teal:   #00e5cc;
+  --teal3:  rgba(0,229,204,.08);
+  --orange: #ff7c3b;
+  --ora3:   rgba(255,124,59,.08);
+  --cyan:   #60efff;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:'IBM Plex Mono',monospace;font-size:12px;overflow:hidden;}
+body::after{content:'';position:fixed;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 3px,rgba(0,0,0,.03) 3px,rgba(0,0,0,.03) 4px);pointer-events:none;z-index:9999;}
+
+/* HEADER */
+.hdr{display:flex;align-items:center;justify-content:space-between;padding:0 20px;height:48px;border-bottom:1px solid var(--border);background:var(--bg2);flex-shrink:0;}
+.hdr-left{display:flex;align-items:center;gap:14px;}
+.logo{font-family:'Orbitron',monospace;font-size:15px;font-weight:900;color:#fff;letter-spacing:.12em;}
+.logo span{color:var(--green);}
+.tagline{font-size:10px;color:var(--dim);letter-spacing:.04em;}
+.hdr-pills{display:flex;gap:6px;}
+.pill{padding:2px 9px;border-radius:3px;font-size:10px;border:1px solid var(--bord2);color:var(--muted);letter-spacing:.03em;}
+.pill.live{border-color:var(--green2);color:var(--green);background:var(--green3);animation:pulse 2s infinite;}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.6}}
+.hdr-stats{display:flex;gap:16px;}
+.hstat{text-align:center;}
+.hstat-val{font-size:13px;font-weight:600;color:var(--cyan);font-family:'Orbitron',monospace;}
+.hstat-lbl{font-size:9px;color:var(--dim);letter-spacing:.05em;}
+
+/* LAYOUT */
+.app{display:grid;grid-template-columns:380px 1fr 280px;height:calc(100vh - 48px);overflow:hidden;}
+
+/* EDITOR PANEL */
+.ed-panel{display:flex;flex-direction:column;border-right:1px solid var(--border);background:var(--bg2);}
+.panel-hdr{padding:8px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;}
+.ph-title{font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;}
+.ed-body{flex:1;display:flex;overflow:hidden;position:relative;}
+.ln{width:36px;padding:12px 6px 12px 0;text-align:right;color:var(--dim);font-size:11px;line-height:1.75;flex-shrink:0;user-select:none;overflow:hidden;}
+#editor{flex:1;background:transparent;border:none;outline:none;color:var(--text);font-family:'IBM Plex Mono',monospace;font-size:12px;line-height:1.75;resize:none;padding:12px 12px 12px 8px;caret-color:var(--green);}
+.ed-footer{flex-shrink:0;}
+.err-box{display:none;margin:6px 10px;padding:7px 10px;background:var(--red3);border:1px solid rgba(255,79,107,.3);border-radius:4px;color:var(--red);font-size:11px;line-height:1.5;}
+.toolbar{padding:8px 10px;border-top:1px solid var(--border);display:flex;gap:6px;flex-wrap:wrap;align-items:center;}
+.btn{padding:5px 12px;border-radius:3px;font-size:11px;font-family:'IBM Plex Mono',monospace;cursor:pointer;border:1px solid var(--bord3);background:var(--bg4);color:var(--text);transition:all .15s;white-space:nowrap;letter-spacing:.02em;}
+.btn:hover{background:var(--bg5);border-color:var(--bord3);}
+.btn.go{background:linear-gradient(135deg,#0a3d1f,#0d4f28);border-color:var(--green2);color:var(--green);}
+.btn.go:hover{background:linear-gradient(135deg,#0d4f28,#0f6030);}
+.btn.step-btn{border-color:#1a4a7a;color:var(--blue);}
+.btn.run-btn{border-color:#1a4a7a;color:var(--blue);}
+.btn.rst{border-color:#5a1a24;color:var(--red);}
+.btn:disabled{opacity:.3;cursor:not-allowed;}
+select{background:var(--bg3);border:1px solid var(--bord2);color:var(--text);font-family:'IBM Plex Mono',monospace;font-size:11px;padding:4px 7px;border-radius:3px;cursor:pointer;}
+select:focus{outline:none;border-color:var(--blue);}
+.spd{display:flex;align-items:center;gap:5px;color:var(--dim);font-size:10px;margin-left:auto;}
+input[type=range]{width:60px;accent-color:var(--green);}
+
+/* CENTER PANEL */
+.ctr-panel{display:flex;flex-direction:column;overflow:hidden;}
+
+/* Pipeline */
+.pipeline{display:grid;grid-template-columns:repeat(5,1fr);gap:0;border-bottom:1px solid var(--border);flex-shrink:0;}
+.stage{padding:10px 12px;border-right:1px solid var(--border);position:relative;min-height:80px;}
+.stage:last-child{border-right:none;}
+.st-name{font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:.1em;margin-bottom:5px;display:flex;align-items:center;gap:5px;}
+.st-dot{width:6px;height:6px;border-radius:50%;background:var(--dim);}
+.stage.active .st-dot{background:var(--green);box-shadow:0 0 6px var(--green);}
+.stage.stall{background:rgba(255,79,107,.04);}
+.stage.stall .st-dot{background:var(--red);}
+.st-body{font-size:10px;color:var(--muted);line-height:1.6;}
+.st-tag{display:inline-block;padding:1px 5px;border-radius:2px;font-size:9px;margin-bottom:3px;}
+.stage.IF  .st-name{color:#3b9eff;}
+.stage.ID  .st-name{color:#b06aff;}
+.stage.EX  .st-name{color:#00f593;}
+.stage.MEM .st-name{color:#ffb830;}
+.stage.WB  .st-name{color:#00e5cc;}
+.hazard-bar{position:absolute;top:0;left:0;right:0;height:2px;}
+.stage.stall .hazard-bar{background:var(--red);}
+.stage.forward .hazard-bar{background:var(--amber);}
+
+/* Hazard panel */
+.hazard-strip{padding:6px 14px;border-bottom:1px solid var(--border);display:flex;gap:10px;align-items:center;flex-shrink:0;background:var(--bg2);}
+.hz-title{font-size:9px;color:var(--dim);text-transform:uppercase;letter-spacing:.08em;margin-right:4px;}
+.hz-badge{padding:2px 8px;border-radius:2px;font-size:10px;font-weight:500;}
+.hz-none{border:1px solid var(--bord2);color:var(--dim);}
+.hz-stall{background:var(--red3);border:1px solid rgba(255,79,107,.3);color:var(--red);}
+.hz-fwd{background:var(--amber3);border:1px solid rgba(255,184,48,.3);color:var(--amber);}
+.hz-ctrl{background:var(--purp3);border:1px solid rgba(176,106,255,.3);color:var(--purple);}
+.hz-stat{margin-left:auto;font-size:10px;color:var(--muted);}
+
+/* Registers + Cache grid */
+.mid-grid{display:grid;grid-template-columns:1fr 1fr;border-bottom:1px solid var(--border);flex-shrink:0;}
+.mid-sec{padding:10px 14px;border-right:1px solid var(--border);}
+.mid-sec:last-child{border-right:none;}
+.sec-t{font-size:9px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;margin-bottom:8px;}
+.reg-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:3px;}
+.rc{padding:4px 6px;border-radius:3px;background:var(--bg3);display:flex;flex-direction:column;gap:1px;transition:background .2s,border .2s;border:1px solid transparent;}
+.rc.lit{background:rgba(59,158,255,.12);border-color:rgba(59,158,255,.3);}
+.rc.lit .rv{color:var(--cyan);}
+.rn{font-size:9px;color:var(--dim);}
+.rv{font-size:11px;color:var(--blue);font-weight:500;}
+
+/* Cache */
+.cache-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:3px;}
+.cc{padding:4px 6px;border-radius:3px;background:var(--bg3);border:1px solid transparent;transition:all .3s;}
+.cc.hit{background:rgba(0,245,147,.1);border-color:rgba(0,245,147,.3);animation:cahit .4s ease;}
+.cc.miss{background:rgba(255,79,107,.1);border-color:rgba(255,79,107,.3);animation:camiss .4s ease;}
+@keyframes cahit{0%{transform:scale(1.05)}100%{transform:scale(1)}}
+@keyframes camiss{0%{background:rgba(255,79,107,.25)}100%{background:rgba(255,79,107,.1)}}
+.cc-addr{font-size:9px;color:var(--dim);}
+.cc-val{font-size:10px;color:var(--muted);}
+.cc.hit .cc-val{color:var(--green);}
+.cc.miss .cc-val{color:var(--red);}
+.cache-stats{display:flex;gap:10px;margin-top:6px;}
+.cstat{font-size:10px;}
+.cstat-h{color:var(--green);}
+.cstat-m{color:var(--red);}
+.cstat-r{color:var(--amber);}
+
+/* Memory */
+.mem-wrap{flex:1;overflow:auto;padding:10px 14px;}
+.mem-hdr{font-size:9px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;margin-bottom:8px;display:flex;justify-content:space-between;}
+.mem-grid{display:grid;grid-template-columns:repeat(16,1fr);gap:2px;}
+.mc{font-size:9px;text-align:center;padding:3px 1px;border-radius:2px;color:var(--dim);background:var(--bg3);cursor:default;transition:all .2s;}
+.mc:hover{background:var(--bg5);}
+.mc.code{background:rgba(59,158,255,.1);color:#3b9eff;}
+.mc.stored{background:rgba(0,245,147,.1);color:var(--green);}
+.mc.pc{background:rgba(0,245,147,.25);color:#fff;font-weight:600;outline:1px solid var(--green2);}
+.mc.stack{background:rgba(255,184,48,.1);color:var(--amber);}
+
+/* LOG */
+.log-wrap{border-top:1px solid var(--border);height:130px;overflow-y:auto;flex-shrink:0;}
+.log-hdr{padding:5px 14px;border-bottom:1px solid var(--border);font-size:9px;color:var(--dim);text-transform:uppercase;letter-spacing:.08em;position:sticky;top:0;background:var(--bg);display:flex;justify-content:space-between;}
+.ll{display:flex;gap:8px;padding:2px 14px;border-bottom:1px solid rgba(255,255,255,.02);font-size:10px;align-items:center;}
+.ll:last-child{border-bottom:none;}
+.ls{color:var(--dim);min-width:22px;}
+.lpc{color:var(--muted);min-width:34px;}
+.lraw{color:var(--dim);min-width:44px;}
+.lop{min-width:40px;font-weight:600;}
+.lop.LOAD,.lop.LOADI{color:var(--blue);}
+.lop.ADD,.lop.ADDI{color:var(--green);}
+.lop.SUB,.lop.SUBI{color:var(--orange);}
+.lop.MUL{color:var(--teal);}
+.lop.AND,.lop.OR,.lop.XOR,.lop.NOT,.lop.SHL,.lop.SHR{color:var(--cyan);}
+.lop.STORE{color:var(--purple);}
+.lop.JUMP,.lop.JZ,.lop.JNZ,.lop.JLT,.lop.JGT,.lop.CALL,.lop.RET{color:var(--amber);}
+.lop.PUSH,.lop.POP{color:#ff7c3b;}
+.lop.HALT{color:var(--red);}
+.ldesc{color:var(--text);}
+.lhz{font-size:9px;padding:1px 5px;border-radius:2px;margin-left:4px;}
+.lhz.stall{background:var(--red3);color:var(--red);}
+.lhz.fwd{background:var(--amber3);color:var(--amber);}
+
+/* RIGHT PANEL */
+.rt-panel{border-left:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;background:var(--bg2);}
+.rt-sec{padding:10px 12px;border-bottom:1px solid var(--border);}
+.rt-t{font-size:9px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;margin-bottom:8px;}
+
+/* CPU State */
+.sv{display:flex;justify-content:space-between;padding:3px 8px;border-radius:3px;background:var(--bg3);margin-bottom:3px;}
+.sl{font-size:10px;color:var(--muted);}
+.sv-v{font-size:10px;color:var(--amber);font-weight:500;}
+.flags{display:flex;gap:5px;margin-top:6px;flex-wrap:wrap;}
+.flag{padding:2px 8px;border-radius:2px;font-size:10px;border:1px solid var(--bord2);color:var(--dim);}
+.flag.on.Z{border-color:#0e7490;color:var(--cyan);background:rgba(96,232,249,.07);}
+.flag.on.N{border-color:#b45309;color:var(--amber);background:rgba(251,191,36,.07);}
+.flag.on.C{border-color:#166534;color:var(--green);background:var(--green3);}
+.flag.on.V{border-color:#6b21a8;color:var(--purple);background:var(--purp3);}
+.flag.on.H{border-color:#991b1b;color:var(--red);background:var(--red3);}
+
+/* CPI Chart */
+.cpi-bars{display:flex;flex-direction:column;gap:4px;}
+.cpi-row{display:flex;align-items:center;gap:6px;}
+.cpi-lbl{font-size:10px;color:var(--muted);min-width:36px;}
+.cpi-bar-wrap{flex:1;background:var(--bg3);border-radius:2px;height:8px;overflow:hidden;}
+.cpi-bar{height:100%;border-radius:2px;transition:width .4s ease;}
+.cpi-val{font-size:10px;color:var(--text);min-width:24px;text-align:right;}
+
+/* Branch predictor */
+.bp-grid{display:grid;grid-template-columns:1fr 1fr;gap:4px;}
+.bp-cell{padding:5px 7px;border-radius:3px;background:var(--bg3);}
+.bp-lbl{font-size:9px;color:var(--dim);}
+.bp-val{font-size:12px;font-weight:600;color:var(--purple);}
+.sat-counter{display:flex;gap:3px;margin-top:5px;}
+.sat-bit{width:14px;height:14px;border-radius:2px;background:var(--bg4);border:1px solid var(--bord2);font-size:8px;display:flex;align-items:center;justify-content:center;color:var(--dim);}
+.sat-bit.on{background:var(--purp3);border-color:var(--purple);color:var(--purple);}
+
+/* Instruction reference */
+.iref{overflow-y:auto;flex:1;padding:8px 12px;}
+.iref-row{display:flex;justify-content:space-between;padding:3px 6px;border-radius:2px;margin-bottom:2px;}
+.iref-row:hover{background:var(--bg3);}
+.iref-mnem{font-size:10px;font-weight:600;}
+.iref-desc{font-size:9px;color:var(--dim);}
+
+::-webkit-scrollbar{width:4px;height:4px;}
+::-webkit-scrollbar-track{background:transparent;}
+::-webkit-scrollbar-thumb{background:var(--bord3);border-radius:2px;}
+
+/* ── AI ASSISTANT PANEL ─────────────────────────────────── */
+.ai-panel{border-top:1px solid var(--border);flex-shrink:0;display:flex;flex-direction:column;background:var(--bg2);}
+.ai-hdr{padding:8px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;cursor:pointer;user-select:none;}
+.ai-hdr:hover{background:var(--bg3);}
+.ai-hdr-left{display:flex;align-items:center;gap:8px;}
+.ai-title{font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;}
+.ai-badge{padding:1px 7px;border-radius:2px;font-size:9px;background:var(--purp3);border:1px solid rgba(176,106,255,.3);color:var(--purple);}
+.ai-chevron{font-size:10px;color:var(--dim);transition:transform .2s;}
+.ai-chevron.open{transform:rotate(180deg);}
+.ai-body{display:none;flex-direction:column;gap:0;}
+.ai-body.open{display:flex;}
+.ai-prompt-wrap{padding:8px 10px;display:flex;flex-direction:column;gap:6px;}
+.ai-prompt{width:100%;background:var(--bg3);border:1px solid var(--bord2);border-radius:4px;color:var(--text);font-family:'IBM Plex Mono',monospace;font-size:11px;padding:7px 9px;resize:none;outline:none;line-height:1.5;transition:border-color .15s;}
+.ai-prompt:focus{border-color:var(--purple);}
+.ai-prompt::placeholder{color:var(--dim);}
+.ai-row{display:flex;gap:6px;align-items:center;}
+.btn.ai-go{background:linear-gradient(135deg,#1e0a3c,#2a0f55);border-color:rgba(176,106,255,.5);color:var(--purple);flex:1;}
+.btn.ai-go:hover{background:linear-gradient(135deg,#2a0f55,#36157a);}
+.btn.ai-go:disabled{opacity:.35;cursor:not-allowed;}
+.ai-insert{border-color:#1a4a7a;color:var(--blue);}
+.ai-status{font-size:10px;color:var(--dim);padding:0 10px 4px;min-height:16px;display:flex;align-items:center;gap:5px;}
+.ai-spinner{display:inline-block;width:8px;height:8px;border:1px solid var(--dim);border-top-color:var(--purple);border-radius:50%;animation:spin .7s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg)}}
+.ai-result{margin:0 10px 8px;background:var(--bg3);border:1px solid var(--bord2);border-radius:4px;overflow:hidden;display:none;}
+.ai-result.visible{display:block;}
+.ai-result-hdr{padding:4px 9px;border-bottom:1px solid var(--border);font-size:9px;color:var(--dim);display:flex;justify-content:space-between;align-items:center;}
+.ai-result-code{padding:7px 9px;font-size:10px;color:var(--green);line-height:1.65;max-height:140px;overflow-y:auto;white-space:pre;font-family:'IBM Plex Mono',monospace;}
+.ai-result-err{padding:7px 9px;font-size:10px;color:var(--red);line-height:1.5;}
+.ai-chips{display:flex;flex-wrap:wrap;gap:4px;padding:0 10px 8px;}
+.ai-chip{padding:2px 8px;border-radius:2px;font-size:9px;background:var(--bg4);border:1px solid var(--bord2);color:var(--muted);cursor:pointer;transition:all .1s;}
+.ai-chip:hover{background:var(--bg5);border-color:var(--bord3);color:var(--text);}
+
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<div class="hdr">
+  <div class="hdr-left">
+    <div class="logo">NOVA<span>-16</span></div>
+    <div class="tagline">Enhanced ISA Emulator · 16-bit · Cache · Hazard Detection · Branch Prediction</div>
+  </div>
+  <div class="hdr-stats">
+    <div class="hstat"><div class="hstat-val" id="hs-cpi">—</div><div class="hstat-lbl">CPI</div></div>
+    <div class="hstat"><div class="hstat-val" id="hs-cyc">0</div><div class="hstat-lbl">CYCLES</div></div>
+    <div class="hstat"><div class="hstat-val" id="hs-hr">—</div><div class="hstat-lbl">CACHE HIT%</div></div>
+    <div class="hstat"><div class="hstat-val" id="hs-bp">—</div><div class="hstat-lbl">BR.PRED%</div></div>
+  </div>
+  <div class="hdr-pills">
+    <span class="pill">16 regs</span>
+    <span class="pill">19 opcodes</span>
+    <span class="pill">L1 cache</span>
+    <span class="pill live" id="status-pill">● IDLE</span>
+  </div>
+</div>
+
+<div class="app">
+
+<!-- ── EDITOR ── -->
+<div class="ed-panel">
+  <div class="panel-hdr">
+    <span class="ph-title">⌨ assembly editor</span>
+    <select id="examples" onchange="loadEx(this.value)">
+      <option value="">— examples —</option>
+      <option value="add">Add numbers</option>
+      <option value="loop">Countdown loop</option>
+      <option value="fib">Fibonacci</option>
+      <option value="sort">Bubble sort (2 elements)</option>
+      <option value="call">Subroutine CALL/RET</option>
+      <option value="hazard">Data hazard demo</option>
+      <option value="bitops">Bitwise ops demo</option>
+    </select>
+  </div>
+  <div class="ed-body">
+    <div class="ln" id="ln">1</div>
+    <textarea id="editor" spellcheck="false" placeholder="; NOVA-16 Assembly
+; Instructions: LOAD LOADI ADD ADDI SUB SUBI MUL AND OR XOR NOT SHL SHR STORE JUMP JZ JNZ JLT JGT PUSH POP CALL RET HALT
+; Registers: R0–R15
+; Labels: LOOP: then JUMP LOOP
+; Comments: start with ;"></textarea>
+  </div>
+  <div class="ed-footer">
+    <div class="err-box" id="err-box"></div>
+    <div class="toolbar">
+      <button class="btn go" onclick="assemble()" title="Ctrl+Enter">assemble ⚙</button>
+      <button class="btn step-btn" id="btn-step" onclick="doStep()" disabled>step ▶</button>
+      <button class="btn run-btn"  id="btn-run"  onclick="doRun()"  disabled>run ▶▶</button>
+      <button class="btn rst"      id="btn-rst"  onclick="doReset()" disabled>reset ↺</button>
+      <div class="spd">spd<input type="range" id="spd" min="50" max="900" value="300"><span id="spd-lbl">300ms</span></div>
+    </div>
+  </div>
+
+  <!-- ── AI ASSISTANT ── -->
+  <div class="ai-panel">
+    <div class="ai-hdr" onclick="toggleAI()">
+      <div class="ai-hdr-left">
+        <span class="ai-title">✦ AI code generator</span>
+        <span class="ai-badge" id="ai-model-badge">Gemini 2.0 Flash</span>
+      </div>
+      <span class="ai-chevron" id="ai-chevron">▼</span>
+    </div>
+    <div class="ai-body" id="ai-body">
+
+      <!-- Quick prompt chips -->
+      <div class="ai-chips">
+        <span class="ai-chip" onclick="aiChip('Count from 1 to 10 and store sum in mem[0]')">sum 1–10</span>
+        <span class="ai-chip" onclick="aiChip('Compute factorial of 5 and store result in mem[0]')">factorial 5</span>
+        <span class="ai-chip" onclick="aiChip('Sort three values in R0 R1 R2 in ascending order')">sort 3 vals</span>
+        <span class="ai-chip" onclick="aiChip('Demonstrate a subroutine using CALL and RET')">CALL/RET demo</span>
+        <span class="ai-chip" onclick="aiChip('Generate a program that shows data hazard stalls and forwarding')">hazard demo</span>
+        <span class="ai-chip" onclick="aiChip('Compute GCD of two numbers using Euclid algorithm')">GCD</span>
+      </div>
+      <div class="ai-prompt-wrap">
+        <textarea class="ai-prompt" id="ai-prompt" rows="2"
+          placeholder="Describe what to compute… e.g. 'multiply two numbers and store result in mem[5]'"
+          onkeydown="if(event.ctrlKey&&event.key==='Enter'){aiGenerate();}"></textarea>
+        <div class="ai-row">
+          <button class="btn ai-go" id="ai-btn" onclick="aiGenerate()">✦ generate  <span style="font-size:9px;opacity:.6">(Ctrl+Enter)</span></button>
+        </div>
+      </div>
+      <div class="ai-status" id="ai-status"></div>
+      <div class="ai-result" id="ai-result">
+        <div class="ai-result-hdr">
+          <span>generated code</span>
+          <button class="btn ai-insert" id="ai-insert-btn" onclick="aiInsert()" style="padding:2px 8px;font-size:9px;">insert into editor ↑</button>
+        </div>
+        <div class="ai-result-code" id="ai-result-code"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── CENTER ── -->
+<div class="ctr-panel">
+  <!-- 5-stage pipeline -->
+  <div class="pipeline">
+    <div class="stage IF" id="st-IF">
+      <div class="hazard-bar"></div>
+      <div class="st-name"><div class="st-dot"></div>IF · Fetch</div>
+      <div class="st-body" id="sb-IF">—</div>
+    </div>
+    <div class="stage ID" id="st-ID">
+      <div class="hazard-bar"></div>
+      <div class="st-name"><div class="st-dot"></div>ID · Decode</div>
+      <div class="st-body" id="sb-ID">—</div>
+    </div>
+    <div class="stage EX" id="st-EX">
+      <div class="hazard-bar"></div>
+      <div class="st-name"><div class="st-dot"></div>EX · Execute</div>
+      <div class="st-body" id="sb-EX">—</div>
+    </div>
+    <div class="stage MEM" id="st-MEM">
+      <div class="hazard-bar"></div>
+      <div class="st-name"><div class="st-dot"></div>MEM · Access</div>
+      <div class="st-body" id="sb-MEM">—</div>
+    </div>
+    <div class="stage WB" id="st-WB">
+      <div class="hazard-bar"></div>
+      <div class="st-name"><div class="st-dot"></div>WB · Writeback</div>
+      <div class="st-body" id="sb-WB">—</div>
+    </div>
+  </div>
+
+  <!-- Hazard strip -->
+  <div class="hazard-strip">
+    <span class="hz-title">hazards</span>
+    <span class="hz-badge hz-none" id="hz-data">data: none</span>
+    <span class="hz-badge hz-none" id="hz-ctrl">ctrl: none</span>
+    <span class="hz-badge hz-none" id="hz-struct">struct: none</span>
+    <span class="hz-stat" id="hz-stat">stalls: 0 · forwards: 0 · mispredicts: 0</span>
+  </div>
+
+  <!-- Registers + Cache -->
+  <div class="mid-grid">
+    <div class="mid-sec">
+      <div class="sec-t">registers (R0–R15)</div>
+      <div class="reg-grid" id="reg-grid"></div>
+    </div>
+    <div class="mid-sec">
+      <div class="sec-t">L1 data cache (8-line direct-mapped)</div>
+      <div class="cache-grid" id="cache-grid"></div>
+      <div class="cache-stats">
+        <span class="cstat cstat-h">hits: <b id="c-hits">0</b></span>
+        <span class="cstat cstat-m">misses: <b id="c-miss">0</b></span>
+        <span class="cstat cstat-r">rate: <b id="c-rate">—</b></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Memory -->
+  <div class="mem-wrap">
+    <div class="mem-hdr"><span>memory — 256 words</span><span id="mem-note" style="color:var(--green);font-size:9px"></span></div>
+    <div class="mem-grid" id="mem-grid"></div>
+  </div>
+
+  <!-- Log -->
+  <div class="log-wrap">
+    <div class="log-hdr"><span>execution trace</span><span id="log-cnt" style="color:var(--dim)"></span></div>
+    <div id="log"></div>
+  </div>
+</div>
+
+<!-- ── RIGHT ── -->
+<div class="rt-panel">
+  <div class="rt-sec">
+    <div class="rt-t">cpu state</div>
+    <div class="sv"><span class="sl">PC</span><span class="sv-v" id="sv-pc">0x00</span></div>
+    <div class="sv"><span class="sl">SP (stack ptr)</span><span class="sv-v" id="sv-sp">0xFF</span></div>
+    <div class="sv"><span class="sl">IR</span><span class="sv-v" id="sv-ir">0x0000</span></div>
+    <div class="sv"><span class="sl">cycles</span><span class="sv-v" id="sv-cyc">0</span></div>
+    <div class="sv"><span class="sl">instructions</span><span class="sv-v" id="sv-ins">0</span></div>
+    <div class="sv"><span class="sl">CPI</span><span class="sv-v" id="sv-cpi">—</span></div>
+    <div class="flags">
+      <span class="flag Z" id="f-Z">Z</span>
+      <span class="flag N" id="f-N">N</span>
+      <span class="flag C" id="f-C">C</span>
+      <span class="flag V" id="f-V">V</span>
+      <span class="flag H" id="f-H">HALT</span>
+    </div>
+  </div>
+
+  <div class="rt-sec">
+    <div class="rt-t">CPI breakdown</div>
+    <div class="cpi-bars" id="cpi-bars">
+      <div class="cpi-row"><span class="cpi-lbl">ALU</span><div class="cpi-bar-wrap"><div class="cpi-bar" id="cb-alu" style="width:0%;background:var(--green)"></div></div><span class="cpi-val" id="cv-alu">0</span></div>
+      <div class="cpi-row"><span class="cpi-lbl">MEM</span><div class="cpi-bar-wrap"><div class="cpi-bar" id="cb-mem" style="width:0%;background:var(--amber)"></div></div><span class="cpi-val" id="cv-mem">0</span></div>
+      <div class="cpi-row"><span class="cpi-lbl">BRANCH</span><div class="cpi-bar-wrap"><div class="cpi-bar" id="cb-br" style="width:0%;background:var(--purple)"></div></div><span class="cpi-val" id="cv-br">0</span></div>
+      <div class="cpi-row"><span class="cpi-lbl">STALL</span><div class="cpi-bar-wrap"><div class="cpi-bar" id="cb-st" style="width:0%;background:var(--red)"></div></div><span class="cpi-val" id="cv-st">0</span></div>
+    </div>
+  </div>
+
+  <div class="rt-sec">
+    <div class="rt-t">branch predictor (2-bit saturating)</div>
+    <div class="bp-grid">
+      <div class="bp-cell"><div class="bp-lbl">predictions</div><div class="bp-val" id="bp-total">0</div></div>
+      <div class="bp-cell"><div class="bp-lbl">correct</div><div class="bp-val" id="bp-correct">0</div></div>
+      <div class="bp-cell"><div class="bp-lbl">mispredicts</div><div class="bp-val" id="bp-miss">0</div></div>
+      <div class="bp-cell"><div class="bp-lbl">accuracy</div><div class="bp-val" id="bp-acc">—</div></div>
+    </div>
+    <div style="margin-top:7px;font-size:9px;color:var(--dim)">2-bit counter state:</div>
+    <div class="sat-counter" id="sat-ctr">
+      <div class="sat-bit" id="sc0">0</div>
+      <div class="sat-bit" id="sc1">0</div>
+      <div class="sat-bit" id="sc2">0</div>
+      <div class="sat-bit" id="sc3">0</div>
+    </div>
+  </div>
+
+  <div class="iref">
+    <div class="rt-t">instruction reference</div>
+    <div id="iref-list"></div>
+  </div>
+</div>
+
+</div><!-- app -->
+
+<script>
+// ═══════════════════════════════════════════════════════
+//  NOVA-16 CPU ENGINE
+// ═══════════════════════════════════════════════════════
+
+// Opcodes — 5-bit encoding. Must match nova16_emulator.py exactly.
+// FIX: LOAD and LOADI were swapped (LOAD was 0, LOADI was 1). Corrected to LOADI=0, LOAD=1.
+const OPS = {
+  LOADI:0, LOAD:1,  ADD:2,  ADDI:3,
+  SUB:4,   SUBI:5,  MUL:6,  AND:7,
+  OR:8,    XOR:9,   NOT:10, SHL:11,
+  SHR:12,  STORE:13,JUMP:14,JZ:15,
+  JNZ:16,  JLT:17,  JGT:18, PUSH:19,
+  POP:20,  CALL:21, RET:22, HALT:31
+};
+const OP_NAME = Object.fromEntries(Object.entries(OPS).map(([k,v])=>[v,k]));
+const BRANCH_OPS = new Set([14,15,16,17,18,21,22]);
+const MEM_OPS    = new Set([1,13,19,20]);   // FIX: was [0,13,19,20]; LOAD=1 not 0
+const ALU_OPS    = new Set([2,3,4,5,6,7,8,9,10,11,12]);
+
+// Cycle costs per instruction type
+const CYCLE_COST = {
+  ALU:1, MEM:2, BRANCH:3, LOADI:1, MUL:3, OTHER:1
+};
+
+// ── CPU State ──────────────────────────────────────────
+let cpu = null, runTimer = null, running = false;
+let storedAddrs = new Set(), codeAddrs = new Set();
+let stepCount = 0, totalCycles = 0;
+let cacheHits = 0, cacheMisses = 0;
+let bpTotal = 0, bpCorrect = 0, bpMispredict = 0;
+let satCounter = 1; // 2-bit: 0=ST,1=WT,2=WNT,3=SNT
+let stallCount = 0, forwardCount = 0;
+let cycleBreakdown = {alu:0,mem:0,branch:0,stall:0};
+// Pipeline register history for hazard detection
+let pipelineHist = []; // last 3 instructions {op,dst,src1,src2}
+
+// L1 Direct-mapped cache: 8 lines
+let cache = Array(8).fill(null).map(()=>({valid:false,tag:-1,data:0,state:''}));
+
+function makeCPU(prog) {
+  const mem = new Uint32Array(256);
+  prog.forEach((w,i)=>{ mem[i]=w; codeAddrs.add(i); });
+  return {
+    pc:0, ir:0,
+    regs: new Int32Array(16),  // R0–R15
+    mem, sp:255,
+    halted:false,
+    Z:false,N:false,C:false,V:false
+  };
+}
+
+// ── Encode/Decode (20-bit instruction word) ───────────────
+// Matches nova16_emulator.py field layout exactly:
+//   Register: op(5)|dst(4)|src1(4)|src2(4)|000  bits[19:15][14:11][10:7][6:3]
+//   Immediate (LOADI): op(5)|dst(4)|imm11       imm in bits[10:0], sign-extend bit10
+//   Reg+Imm (ADDI/SUBI/SHL/SHR): op(5)|dst(4)|src1(4)|imm7  imm bits[6:0], sign-extend bit6
+//   Store: op(5)|src(4)|addr8  src in [14:11], addr in [7:0]
+//   Jump/Call: op(5)|addr8  addr in [7:0]
+// FIX: old code used a 15-bit imm which broke LOADI and all immediate ops.
+function decode(w) {
+  const op   = (w >> 15) & 0x1F;
+  const dst  = (w >> 11) & 0xF;
+  const src1 = (w >>  7) & 0xF;
+  const src2 = (w >>  3) & 0xF;
+  let i11 = w & 0x7FF; if (i11 & 0x400) i11 -= 0x800;   // sign-extend 11-bit
+  let i7  = w & 0x7F;  if (i7  & 0x040) i7  -= 0x080;   // sign-extend 7-bit
+  const a8 = w & 0xFF;                                    // 8-bit unsigned addr
+  return {op, dst, src1, src2, imm:i11, imm7:i7, addr:a8};
+}
+
+function s16(v){v&=0xFFFF;return v>=0x8000?v-0x10000:v;}
+
+function cacheAccess(addr, data, isWrite) {
+  const idx = addr % 8;
+  const tag = Math.floor(addr / 8);
+  const line = cache[idx];
+  if (!isWrite) {
+    if (line.valid && line.tag === tag) {
+      cacheHits++;
+      cache[idx].state = 'hit';
+      return { hit:true, data:line.data };
+    } else {
+      cacheMisses++;
+      cache[idx] = {valid:true, tag, data: cpu.mem[addr]||0, state:'miss'};
+      return { hit:false, data:cpu.mem[addr]||0 };
+    }
+  } else {
+    cache[idx] = {valid:true, tag, data, state:'hit'};
+    return {hit:true};
+  }
+}
+
+// Hazard detection — returns 'stall', 'forward', or 'none'
+function detectHazards(f) {
+  const uses = new Set([f.src1, f.src2]);
+  for (let i = pipelineHist.length-1; i >= Math.max(0,pipelineHist.length-2); i--) {
+    const prev = pipelineHist[i];
+    if (prev && prev.dst !== undefined && prev.dst !== -1 && prev.dst !== 0 && uses.has(prev.dst)) {
+      if (MEM_OPS.has(prev.op)) {
+        stallCount++;
+        return 'stall';
+      } else {
+        forwardCount++;
+        return 'forward';
+      }
+    }
+  }
+  return 'none';
+}
+
+// Branch predictor update
+function predictBranch(taken) {
+  const predicted = satCounter >= 2; // 2,3 = predict taken
+  bpTotal++;
+  if (predicted === taken) bpCorrect++;
+  else bpMispredict++;
+  // Update 2-bit counter
+  if (taken && satCounter < 3) satCounter++;
+  if (!taken && satCounter > 0) satCounter--;
+  return predicted;
+}
+
+function execStep(c) {
+  if (c.halted || c.pc >= 256) return null;
+  const addr = c.pc;
+  c.ir = c.mem[c.pc++];
+  const f = decode(c.ir);
+  const opn = OP_NAME[f.op] || '?';
+  let detail='', writtenReg=-1, hazard='none', cycles=1;
+
+  // Hazard detection
+  const hazardType = detectHazards(f);
+  if (hazardType === 'stall') { hazard='stall'; cycles+=1; cycleBreakdown.stall++; }
+  else if (hazardType === 'forward') { hazard='forward'; }
+
+  switch(f.op) {
+    case OPS.LOAD: {
+      // LOAD Rd, addr8 — addr in f.addr (bits[7:0]), dst in f.dst
+      const ca = cacheAccess(f.addr, 0, false);
+      c.regs[f.dst] = s16(c.mem[f.addr]);
+      writtenReg=f.dst; detail=`R${f.dst} ← mem[${f.addr}]=${c.regs[f.dst]} (cache ${ca.hit?'HIT':'MISS'})`;
+      cycles=2; cycleBreakdown.mem+=cycles; break;
+    }
+    case OPS.LOADI:
+      // LOADI Rd, imm11 — 11-bit signed imm in f.imm, dst in f.dst
+      c.regs[f.dst]=f.imm; writtenReg=f.dst;
+      detail=`R${f.dst} ← ${f.imm}`; cycles=1; cycleBreakdown.alu+=cycles; break;
+    case OPS.ADD:
+      {const a=c.regs[f.src1],b=c.regs[f.src2],r=a+b;
+      c.regs[f.dst]=s16(r);writtenReg=f.dst;
+      c.C=((r&0x10000)!==0); c.V=(((~(a^b))&(a^c.regs[f.dst])&0x8000)!==0);
+      detail=`R${f.dst}=R${f.src1}(${a})+R${f.src2}(${b})→${c.regs[f.dst]}`;cycleBreakdown.alu++;break;}
+    case OPS.ADDI:
+      // ADDI Rd, Rs, imm7 — 7-bit signed imm in f.imm7
+      {const a=c.regs[f.src1],b=f.imm7,r=a+b;
+      c.regs[f.dst]=s16(r);writtenReg=f.dst;
+      c.C=((r&0x10000)!==0); c.V=(((~(a^b))&(a^c.regs[f.dst])&0x8000)!==0);
+      detail=`R${f.dst}=R${f.src1}(${a})+${b}→${c.regs[f.dst]}`;cycleBreakdown.alu++;break;}
+    case OPS.SUB:
+      {const a=c.regs[f.src1],b=c.regs[f.src2],r=a-b;
+      c.regs[f.dst]=s16(r);writtenReg=f.dst;
+      c.C=((r&0x10000)!==0); c.V=((((a^b)&(a^c.regs[f.dst]))&0x8000)!==0);
+      detail=`R${f.dst}=R${f.src1}(${a})-R${f.src2}(${b})→${c.regs[f.dst]}`;cycleBreakdown.alu++;break;}
+    case OPS.SUBI:
+      // SUBI Rd, Rs, imm7 — 7-bit signed imm in f.imm7
+      {const a=c.regs[f.src1],b=f.imm7,r=a-b;
+      c.regs[f.dst]=s16(r);writtenReg=f.dst;
+      c.C=((r&0x10000)!==0); c.V=((((a^b)&(a^c.regs[f.dst]))&0x8000)!==0);
+      detail=`R${f.dst}=R${f.src1}(${a})-${b}→${c.regs[f.dst]}`;cycleBreakdown.alu++;break;}
+    case OPS.MUL:
+      {const a=c.regs[f.src1],b=c.regs[f.src2],r=a*b;
+      c.regs[f.dst]=s16(r);writtenReg=f.dst;
+      c.C=((r&0x10000)!==0); c.V=(r>32767||r<-32768);
+      detail=`R${f.dst}=R${f.src1}(${a})×R${f.src2}(${b})→${c.regs[f.dst]}`;cycles=3;cycleBreakdown.alu+=3;break;}
+    case OPS.AND:
+      c.regs[f.dst]=s16(c.regs[f.src1]&c.regs[f.src2]);writtenReg=f.dst;
+      detail=`R${f.dst}=R${f.src1}&R${f.src2}→${c.regs[f.dst]}`;cycleBreakdown.alu++;break;
+    case OPS.OR:
+      c.regs[f.dst]=s16(c.regs[f.src1]|c.regs[f.src2]);writtenReg=f.dst;
+      detail=`R${f.dst}=R${f.src1}|R${f.src2}→${c.regs[f.dst]}`;cycleBreakdown.alu++;break;
+    case OPS.XOR:
+      c.regs[f.dst]=s16(c.regs[f.src1]^c.regs[f.src2]);writtenReg=f.dst;
+      detail=`R${f.dst}=R${f.src1}^R${f.src2}→${c.regs[f.dst]}`;cycleBreakdown.alu++;break;
+    case OPS.NOT:
+      // FIX: mask to 0xFFFF before sign-extending, otherwise JS ~x is also unbounded-negative
+      c.regs[f.dst]=s16((~c.regs[f.src1])&0xFFFF);writtenReg=f.dst;
+      detail=`R${f.dst}=~R${f.src1}→${c.regs[f.dst]}`;cycleBreakdown.alu++;break;
+    case OPS.SHL:
+      // SHL Rd, Rs, imm7 — shift amount in f.imm7
+      c.regs[f.dst]=s16(c.regs[f.src1]<<(f.imm7&0xF));writtenReg=f.dst;
+      detail=`R${f.dst}=R${f.src1}<<${f.imm7&0xF}→${c.regs[f.dst]}`;cycleBreakdown.alu++;break;
+    case OPS.SHR:
+      // SHR Rd, Rs, imm7 — logical shift: mask to 16-bit unsigned first
+      c.regs[f.dst]=s16((c.regs[f.src1]&0xFFFF)>>>(f.imm7&0xF));writtenReg=f.dst;
+      detail=`R${f.dst}=R${f.src1}>>${f.imm7&0xF}→${c.regs[f.dst]}`;cycleBreakdown.alu++;break;
+    case OPS.STORE: {
+      // STORE Rs, addr8 — src in f.dst field (bits[14:11]), addr in f.addr (bits[7:0])
+      const a=f.addr; c.mem[a]=c.regs[f.dst]&0xFFFF;
+      cacheAccess(a, c.mem[a], true); storedAddrs.add(a);
+      detail=`mem[${a}]←R${f.dst}=${c.regs[f.dst]}`;cycles=2;cycleBreakdown.mem+=2;break;
+    }
+    case OPS.JUMP:
+      c.pc=f.addr; detail=`PC←${f.addr}`; cycles=3; cycleBreakdown.branch+=3; break;
+    case OPS.JZ:
+      if(c.Z){c.pc=f.addr;detail=`Z=1 → PC←${f.addr}`;predictBranch(true);}
+      else{detail=`Z=0 → no jump`;predictBranch(false);}
+      cycles=3;cycleBreakdown.branch+=3;break;
+    case OPS.JNZ:
+      if(!c.Z){c.pc=f.addr;detail=`Z=0 → PC←${f.addr}`;predictBranch(true);}
+      else{detail=`Z=1 → no jump`;predictBranch(false);}
+      cycles=3;cycleBreakdown.branch+=3;break;
+    case OPS.JLT:
+      if(c.N){c.pc=f.addr;detail=`N=1 → PC←${f.addr}`;predictBranch(true);}
+      else{detail=`N=0 → no jump`;predictBranch(false);}
+      cycles=3;cycleBreakdown.branch+=3;break;
+    case OPS.JGT:
+      if(!c.N&&!c.Z){c.pc=f.addr;detail=`N=0,Z=0 → PC←${f.addr}`;predictBranch(true);}
+      else{detail=`condition false → no jump`;predictBranch(false);}
+      cycles=3;cycleBreakdown.branch+=3;break;
+    case OPS.PUSH:
+      // PUSH Rs — src in f.dst field (enc_st puts src in [14:11])
+      if(c.sp<0){throw new Error('Stack underflow');}
+      c.mem[c.sp]=c.regs[f.dst]&0xFFFF; c.sp--;
+      detail=`mem[${c.sp+1}]←R${f.dst}=${c.regs[f.dst]} (stack push)`;cycles=2;cycleBreakdown.mem+=2;break;
+    case OPS.POP:
+      if(c.sp>=255){throw new Error('Stack overflow (empty stack)');}
+      c.sp++; c.regs[f.dst]=s16(c.mem[c.sp]); writtenReg=f.dst;
+      detail=`R${f.dst}←mem[${c.sp}]=${c.regs[f.dst]} (stack pop)`;cycles=2;cycleBreakdown.mem+=2;break;
+    case OPS.CALL:
+      if(c.sp<0){throw new Error('Stack underflow on CALL');}
+      c.mem[c.sp]=c.pc; c.sp--; c.pc=f.addr;
+      detail=`pushed ret@${c.mem[c.sp+1]}, PC←${c.pc}`;cycles=3;cycleBreakdown.branch+=3;break;
+    case OPS.RET:
+      if(c.sp>=255){throw new Error('Stack overflow on RET (empty stack)');}
+      c.sp++; c.pc=c.mem[c.sp];
+      detail=`PC←mem[${c.sp}]=${c.pc} (return)`;cycles=3;cycleBreakdown.branch+=3;break;
+    case OPS.HALT:
+      c.halted=true; detail='CPU halted'; break;
+    default:
+      detail=`unknown op 0x${f.op.toString(16)}`;
+  }
+
+  // Update Z/N flags for ALU ops that wrote a register.
+  // C and V are set per-operation inside the switch (where the raw pre-clamp
+  // value is available); we only recompute Z/N here from the clamped result.
+  if (writtenReg >= 0) {
+    const v = c.regs[writtenReg];
+    c.Z = (v === 0);
+    c.N = (v < 0);
+  }
+
+  totalCycles += cycles;
+  stepCount++;
+
+  // Track in pipeline history
+  pipelineHist.push({op:f.op, dst:writtenReg, src1:f.src1, src2:f.src2});
+  if (pipelineHist.length > 3) pipelineHist.shift();
+
+  return {addr, instr:c.ir, ...f, opn, detail, writtenReg, hazard, cycles};
+}
+
+// ═══════════════════════════════════════════════════════
+//  ASSEMBLER
+// ═══════════════════════════════════════════════════════
+// ── Encode helpers — match Python enc_r / enc_i / enc_ri / enc_st / enc_a ──
+// FIX: old encodeInstr used a single generic function that didn't match any of
+//      Python's 5 encoding formats. Replace with dedicated helpers.
+function enc_r (op,d,s1,s2){ return (op<<15)|(d<<11)|(s1<<7)|(s2<<3); }
+function enc_i (op,d,i)    { return (op<<15)|(d<<11)|(i&0x7FF); }         // LOADI: 11-bit imm
+function enc_ri(op,d,s1,i) { return (op<<15)|(d<<11)|(s1<<7)|(i&0x7F); } // ADDI/SUBI/SHL/SHR: 7-bit imm
+function enc_st(op,s,a)    { return (op<<15)|(s<<11)|(a&0xFF); }          // STORE/PUSH
+function enc_a (op,a)      { return (op<<15)|(a&0xFF); }                   // JUMP/JZ/JNZ/JLT/JGT/CALL/RET/HALT
+function enc_load(op,d,a)  { return enc_a(op,a)|(d<<11); }                // LOAD: addr8 + dst field
+function rn(s){
+  s=s.trim().toUpperCase();
+  if(!/^R(1[0-5]|[0-9])$/.test(s))throw new Error(`Bad register: ${s}`);
+  return parseInt(s.slice(1));
+}
+function imm(s, labels){
+  s=s.trim();
+  if(labels&&labels[s.toUpperCase()]!==undefined) return labels[s.toUpperCase()];
+  if(s.startsWith('0b')||s.startsWith('0B')) return parseInt(s.slice(2),2);
+  if(s.startsWith('0x')||s.startsWith('0X')) return parseInt(s,16);
+  const v=parseInt(s,10);
+  if(isNaN(v))throw new Error(`Bad immediate: ${s}`);
+  return v;
+}
+
+function assemble() {
+  const src = document.getElementById('editor').value;
+  const lines = src.split('\n');
+  const errors = [];
+  const words = [];
+  const labels = {};
+
+  // Pass 1: collect labels
+  let addr = 0;
+  lines.forEach((raw,li) => {
+    const line = raw.replace(/;.*/,'').trim();
+    if (!line) return;
+    if (line.endsWith(':')) { labels[line.slice(0,-1).toUpperCase()] = addr; return; }
+    if (line.includes(':')) {
+      const [lbl, ...rest] = line.split(':');
+      labels[lbl.trim().toUpperCase()] = addr;
+      if (rest.join(':').trim()) addr++;
+      return;
+    }
+    addr++;
+  });
+
+  // Pass 2: encode
+  lines.forEach((raw,li) => {
+    const line = raw.replace(/;.*/,'').trim();
+    if (!line || line.endsWith(':')) return;
+    let codeLine = line;
+    if (line.includes(':')) codeLine = line.split(':').slice(1).join(':').trim();
+    if (!codeLine) return;
+    const p = codeLine.split(/[\s,]+/).filter(Boolean);
+    const mn = p[0].toUpperCase();
+    try {
+      // FIX: all cases now use the correct encoder for each instruction format,
+      //      matching nova16_emulator.py assemble() exactly.
+      switch(mn) {
+        case 'LOADI': words.push(enc_i (OPS.LOADI,rn(p[1]),imm(p[2],labels))); break;
+        case 'LOAD':  words.push(enc_load(OPS.LOAD, rn(p[1]),imm(p[2],labels))); break;
+        case 'ADD':   words.push(enc_r (OPS.ADD,  rn(p[1]),rn(p[2]),rn(p[3]))); break;
+        case 'ADDI':  words.push(enc_ri(OPS.ADDI, rn(p[1]),rn(p[2]),imm(p[3],labels))); break;
+        case 'SUB':   words.push(enc_r (OPS.SUB,  rn(p[1]),rn(p[2]),rn(p[3]))); break;
+        case 'SUBI':  words.push(enc_ri(OPS.SUBI, rn(p[1]),rn(p[2]),imm(p[3],labels))); break;
+        case 'MUL':   words.push(enc_r (OPS.MUL,  rn(p[1]),rn(p[2]),rn(p[3]))); break;
+        case 'AND':   words.push(enc_r (OPS.AND,  rn(p[1]),rn(p[2]),rn(p[3]))); break;
+        case 'OR':    words.push(enc_r (OPS.OR,   rn(p[1]),rn(p[2]),rn(p[3]))); break;
+        case 'XOR':   words.push(enc_r (OPS.XOR,  rn(p[1]),rn(p[2]),rn(p[3]))); break;
+        case 'NOT':   words.push(enc_r (OPS.NOT,  rn(p[1]),rn(p[2]),0)); break;
+        case 'SHL':   words.push(enc_ri(OPS.SHL,  rn(p[1]),rn(p[2]),imm(p[3],labels))); break;
+        case 'SHR':   words.push(enc_ri(OPS.SHR,  rn(p[1]),rn(p[2]),imm(p[3],labels))); break;
+        case 'STORE': words.push(enc_st(OPS.STORE, rn(p[1]),imm(p[2],labels))); break;
+        case 'JUMP':  words.push(enc_a (OPS.JUMP,  imm(p[1],labels))); break;
+        case 'JZ':    words.push(enc_a (OPS.JZ,    imm(p[1],labels))); break;
+        case 'JNZ':   words.push(enc_a (OPS.JNZ,   imm(p[1],labels))); break;
+        case 'JLT':   words.push(enc_a (OPS.JLT,   imm(p[1],labels))); break;
+        case 'JGT':   words.push(enc_a (OPS.JGT,   imm(p[1],labels))); break;
+        case 'PUSH':  words.push(enc_st(OPS.PUSH,  rn(p[1]),0)); break;
+        case 'POP':   words.push(enc_i (OPS.POP,   rn(p[1]),0)); break;
+        case 'CALL':  words.push(enc_a (OPS.CALL,  imm(p[1],labels))); break;
+        case 'RET':   words.push(enc_a (OPS.RET,   0)); break;
+        case 'HALT':  words.push(enc_a (OPS.HALT,  0)); break;
+        default: errors.push(`Line ${li+1}: unknown mnemonic '${mn}'`);
+      }
+    } catch(e) { errors.push(`Line ${li+1}: ${e.message}`); }
+  });
+
+  const eb = document.getElementById('err-box');
+  if (errors.length) { eb.style.display='block'; eb.textContent=errors.join('\n'); return; }
+  if (!words.length) { eb.style.display='block'; eb.textContent='No instructions found.'; return; }
+  eb.style.display='none';
+
+  // Reset everything
+  storedAddrs=new Set(); codeAddrs=new Set();
+  stepCount=0; totalCycles=0; cacheHits=0; cacheMisses=0;
+  bpTotal=0; bpCorrect=0; bpMispredict=0; satCounter=1;
+  stallCount=0; forwardCount=0; pipelineHist=[];
+  cycleBreakdown={alu:0,mem:0,branch:0,stall:0};
+  cache=Array(8).fill(null).map(()=>({valid:false,tag:-1,data:0,state:''}));
+  cpu = makeCPU(words);
+  document.getElementById('log').innerHTML='';
+  document.getElementById('log-cnt').textContent='';
+  setPipeIdle(); setStatus('ready');
+  ['btn-step','btn-run','btn-rst'].forEach(id=>document.getElementById(id).disabled=false);
+  renderAll(null);
+}
+
+// ═══════════════════════════════════════════════════════
+//  STEP / RUN
+// ═══════════════════════════════════════════════════════
+function doStep(){
+  if(!cpu||cpu.halted)return;
+  const info=execStep(cpu);
+  renderAll(info);
+  renderPipeline(info);
+  appendLog(info);
+  updateStats();
+  if(cpu.halted){setStatus('halt');stopRun();}
+  else setStatus('running');
+}
+function doRun(){
+  if(running){stopRun();return;}
+  running=true;
+  document.getElementById('btn-run').textContent='pause ⏸';
+  document.getElementById('btn-step').disabled=true;
+  const ms=parseInt(document.getElementById('spd').value);
+  runTimer=setInterval(()=>{if(!cpu||cpu.halted){stopRun();return;}doStep();},ms);
+}
+function stopRun(){
+  clearInterval(runTimer);running=false;
+  document.getElementById('btn-run').textContent='run ▶▶';
+  document.getElementById('btn-step').disabled=cpu&&cpu.halted;
+}
+function doReset(){
+  stopRun();cpu=null;stepCount=0;totalCycles=0;
+  storedAddrs=new Set();codeAddrs=new Set();
+  cacheHits=0;cacheMisses=0;bpTotal=0;bpCorrect=0;bpMispredict=0;satCounter=1;
+  stallCount=0;forwardCount=0;pipelineHist=[];
+  cycleBreakdown={alu:0,mem:0,branch:0,stall:0};
+  cache=Array(8).fill(null).map(()=>({valid:false,tag:-1,data:0,state:''}));
+  document.getElementById('log').innerHTML='';
+  document.getElementById('log-cnt').textContent='';
+  ['btn-step','btn-run','btn-rst'].forEach(id=>document.getElementById(id).disabled=true);
+  setStatus('idle');setPipeIdle();renderAll(null);updateStats();
+}
+
+// ═══════════════════════════════════════════════════════
+//  RENDER
+// ═══════════════════════════════════════════════════════
+function renderAll(info) {
+  const lit = info?info.writtenReg:-1;
+  // Registers
+  const rg=document.getElementById('reg-grid'); rg.innerHTML='';
+  const regs=cpu?cpu.regs:new Int32Array(16);
+  for(let i=0;i<16;i++){
+    const d=document.createElement('div');
+    d.className='rc'+(i===lit?' lit':'');
+    const v=regs[i];
+    d.innerHTML=`<span class="rn">R${i}</span><span class="rv">${v>=0?'':''}${v}</span>`;
+    rg.appendChild(d);
+  }
+  // CPU state
+  document.getElementById('sv-pc').textContent='0x'+(cpu?cpu.pc:0).toString(16).padStart(2,'0').toUpperCase();
+  document.getElementById('sv-sp').textContent='0x'+(cpu?cpu.sp:255).toString(16).padStart(2,'0').toUpperCase();
+  document.getElementById('sv-ir').textContent='0x'+(cpu?cpu.ir:0).toString(16).padStart(5,'0').toUpperCase();
+  document.getElementById('sv-cyc').textContent=totalCycles;
+  document.getElementById('sv-ins').textContent=stepCount;
+  const cpi=stepCount>0?(totalCycles/stepCount).toFixed(2):'—';
+  document.getElementById('sv-cpi').textContent=cpi;
+  // Flags
+  ['Z','N','C','V'].forEach(f=>{document.getElementById('f-'+f).className='flag '+f+(cpu&&cpu[f]?' on':'');});
+  document.getElementById('f-H').className='flag H'+(cpu&&cpu.halted?' on':'');
+  // Cache
+  const cg=document.getElementById('cache-grid'); cg.innerHTML='';
+  cache.forEach((line,i)=>{
+    const d=document.createElement('div');
+    d.className='cc'+(line.state==='hit'?' hit':line.state==='miss'?' miss':'');
+    d.innerHTML=`<div class="cc-addr">L${i} tag:${line.valid?line.tag.toString(16):'—'}</div><div class="cc-val">${line.valid?'0x'+line.data.toString(16).padStart(4,'0'):'empty'}</div>`;
+    cg.appendChild(d);
+    // reset state
+    setTimeout(()=>{ cache[i].state=''; },500);
+  });
+  document.getElementById('c-hits').textContent=cacheHits;
+  document.getElementById('c-miss').textContent=cacheMisses;
+  const tot=cacheHits+cacheMisses;
+  document.getElementById('c-rate').textContent=tot>0?(cacheHits/tot*100).toFixed(1)+'%':'—';
+  // Memory
+  renderMem();
+  // Hazard strip
+  renderHazards(info);
+}
+
+function renderMem(){
+  const g=document.getElementById('mem-grid');g.innerHTML='';
+  const mem=cpu?cpu.mem:new Uint32Array(256);
+  const pc=cpu?cpu.pc:-1, sp=cpu?cpu.sp:255;
+  for(let i=0;i<256;i++){
+    const d=document.createElement('div');
+    const isPC=i===pc, isSt=storedAddrs.has(i), isCode=codeAddrs.has(i), isStack=i>sp&&i<=255;
+    d.className='mc'+(isPC?' pc':(isSt?' stored':(isCode?' code':(isStack&&mem[i]?' stack':''))));
+    d.title=`[${i}]=0x${mem[i].toString(16).padStart(5,'0')} (${mem[i]})`;
+    d.textContent=isPC?'▶':(mem[i]?mem[i].toString(16).slice(-4):'··');
+    g.appendChild(d);
+  }
+  const note=[];
+  storedAddrs.forEach(a=>note.push(`mem[${a}]=${cpu?cpu.mem[a]:0}`));
+  document.getElementById('mem-note').textContent=note.slice(-2).join(' · ');
+}
+
+function renderPipeline(info){
+  if(!info){setPipeIdle();return;}
+  const bin=info.instr.toString(2).padStart(20,'0');
+  // IF
+  document.getElementById('sb-IF').innerHTML=`addr 0x${info.addr.toString(16).padStart(2,'0').toUpperCase()}<br>raw: 0x${info.instr.toString(16).padStart(5,'0').toUpperCase()}<br><span style="font-size:9px;color:var(--dim)">${bin.slice(0,5)} ${bin.slice(5,9)} ${bin.slice(9,13)} ${bin.slice(13)}</span>`;
+  // ID — show correct immediate field depending on instruction type
+  const immDisplay = (info.op===OPS.LOADI||info.op===OPS.LOAD||info.op===OPS.POP) ? info.imm :
+                     (info.op===OPS.ADDI||info.op===OPS.SUBI||info.op===OPS.SHL||info.op===OPS.SHR) ? info.imm7 :
+                     (info.op===OPS.STORE||info.op===OPS.PUSH||BRANCH_OPS.has(info.op)) ? info.addr : '—';
+  document.getElementById('sb-ID').innerHTML=`op:<b style="color:var(--purple)">${info.opn}</b> dst:R${info.dst}<br>src1:R${info.src1} src2:R${info.src2}<br>imm:${immDisplay}`;
+  // EX
+  const hzColor=info.hazard==='stall'?'var(--red)':info.hazard==='forward'?'var(--amber)':'var(--green)';
+  document.getElementById('sb-EX').innerHTML=`<b style="color:${hzColor}">${info.opn}</b> [${info.cycles}cyc]<br><span style="font-size:10px">${info.detail.slice(0,40)}</span>`;
+  // MEM
+  const isMem=MEM_OPS.has(info.op)||info.op===OPS.STORE;
+  document.getElementById('sb-MEM').innerHTML=isMem?`<span style="color:var(--amber)">memory access</span><br>${info.detail.includes('cache')?info.detail.split('(')[1]?.replace(')',''):'no cache op'}`:'<span style="color:var(--dim)">pass-through</span>';
+  // WB
+  document.getElementById('sb-WB').innerHTML=info.writtenReg>=0?`<span style="color:var(--teal)">R${info.writtenReg} ← ${cpu?cpu.regs[info.writtenReg]:0}</span>`:'<span style="color:var(--dim)">no writeback</span>';
+  // Stage classes
+  ['IF','ID','EX','MEM','WB'].forEach(s=>{
+    const el=document.getElementById('st-'+s);
+    el.className='stage '+s+' active'+(s==='EX'&&info.hazard==='stall'?' stall':s==='EX'&&info.hazard==='forward'?' forward':'');
+  });
+}
+
+function renderHazards(info){
+  const dEl=document.getElementById('hz-data'), cEl=document.getElementById('hz-ctrl'), sEl=document.getElementById('hz-struct');
+  if(info){
+    if(info.hazard==='stall'){dEl.className='hz-badge hz-stall';dEl.textContent='data: STALL';}
+    else if(info.hazard==='forward'){dEl.className='hz-badge hz-fwd';dEl.textContent='data: FORWARD';}
+    else{dEl.className='hz-badge hz-none';dEl.textContent='data: none';}
+    if(BRANCH_OPS.has(info.op)){cEl.className='hz-badge hz-ctrl';cEl.textContent='ctrl: branch';}
+    else{cEl.className='hz-badge hz-none';cEl.textContent='ctrl: none';}
+  }
+  document.getElementById('hz-stat').textContent=`stalls: ${stallCount} · forwards: ${forwardCount} · mispredicts: ${bpMispredict}`;
+  // Branch predictor panel
+  document.getElementById('bp-total').textContent=bpTotal;
+  document.getElementById('bp-correct').textContent=bpCorrect;
+  document.getElementById('bp-miss').textContent=bpMispredict;
+  document.getElementById('bp-acc').textContent=bpTotal>0?(bpCorrect/bpTotal*100).toFixed(1)+'%':'—';
+  // 2-bit counter viz
+  const bits=satCounter.toString(2).padStart(2,'0');
+  [0,1,2,3].forEach(i=>{
+    const el=document.getElementById('sc'+i);
+    el.className='sat-bit'+(i===satCounter?' on':'');
+    const labels=['SN','WN','WT','ST'];
+    el.textContent=labels[i];
+  });
+}
+
+function updateStats(){
+  const cpi=stepCount>0?(totalCycles/stepCount).toFixed(2):'—';
+  document.getElementById('hs-cpi').textContent=cpi;
+  document.getElementById('hs-cyc').textContent=totalCycles;
+  const tot=cacheHits+cacheMisses;
+  document.getElementById('hs-hr').textContent=tot>0?(cacheHits/tot*100).toFixed(0)+'%':'—';
+  document.getElementById('hs-bp').textContent=bpTotal>0?(bpCorrect/bpTotal*100).toFixed(0)+'%':'—';
+  // CPI bars — key→DOM-id mapping
+  const maxC=Math.max(cycleBreakdown.alu,cycleBreakdown.mem,cycleBreakdown.branch,cycleBreakdown.stall,1);
+  const barId={alu:'alu',mem:'mem',branch:'br',stall:'st'};
+  ['alu','mem','branch','stall'].forEach(k=>{
+    const id=barId[k];
+    const v=cycleBreakdown[k];
+    document.getElementById('cb-'+id).style.width=(v/maxC*100)+'%';
+    document.getElementById('cv-'+id).textContent=v;
+  });
+}
+
+function appendLog(info){
+  const l=document.getElementById('log');
+  const d=document.createElement('div');d.className='ll';
+  const hzHtml=info.hazard==='stall'?'<span class="lhz stall">STALL</span>':info.hazard==='forward'?'<span class="lhz fwd">FWD</span>':'';
+  d.innerHTML=`<span class="ls">#${String(stepCount).padStart(3,'0')}</span><span class="lpc">@${info.addr.toString(16).padStart(2,'0').toUpperCase()}</span><span class="lraw">0x${info.instr.toString(16).padStart(5,'0').toUpperCase()}</span><span class="lop ${info.opn}">${info.opn}</span><span class="ldesc">${info.detail}</span>${hzHtml}`;
+  l.appendChild(d);
+  l.parentElement.scrollTop=l.parentElement.scrollHeight;
+  document.getElementById('log-cnt').textContent=`(${stepCount} instr, ${totalCycles} cycles)`;
+}
+
+function setPipeIdle(){
+  ['IF','ID','EX','MEM','WB'].forEach(s=>{
+    document.getElementById('st-'+s).className='stage '+s;
+    document.getElementById('sb-'+s).textContent='—';
+  });
+}
+
+function setStatus(s){
+  const p=document.getElementById('status-pill');
+  const m={idle:'● IDLE',ready:'● READY',running:'● RUNNING',halt:'■ HALTED'};
+  p.textContent=m[s]||'● IDLE';
+  p.className='pill'+(s==='running'||s==='ready'?' live':'');
+  if(s==='halt'){p.style.cssText='border-color:#7f1d1d;color:var(--red);background:var(--red3);';}
+  else p.style.cssText='';
+}
+
+// ═══════════════════════════════════════════════════════
+//  EXAMPLES
+// ═══════════════════════════════════════════════════════
+const EX = {
+add:`; Add two numbers and store result
+; R0=90, R1=100, R2=R0+R1=190 → mem[0]
+LOADI R0, 90
+LOADI R1, 100
+ADD   R2, R0, R1
+STORE R2, 0
+HALT`,
+
+loop:`; Countdown loop using labels + JNZ
+; R0 counts down from 10 to 0
+LOADI R0, 10      ; counter = 10
+LOADI R1, 1       ; decrement = 1
+LOADI R2, 0       ; accumulator = 0
+LOOP:
+  ADD  R2, R2, R0  ; accumulate
+  SUB  R0, R0, R1  ; counter--
+  JNZ  LOOP        ; if R0 != 0, loop
+STORE R2, 1        ; store sum(1..10)=55
+HALT`,
+
+fib:`; Fibonacci: F(0)..F(6) → mem[10..16]  (F6=8)
+; Each loop: R2=R0+R1, then R0←R1, R1←R2
+; To copy R0←R1: R0 = R1+R1-R1 = R1  →  ADD R0,R1,R1 then SHR R0,R0,1
+; Simpler: use XOR-swap (a^=b;b^=a;a^=b) then assign R1=R2 the same way.
+; Cleanest without MOV: track prev naturally using SUB.
+LOADI R0, 0       ; R0 = F(0)
+LOADI R1, 1       ; R1 = F(1)
+LOADI R3, 5       ; 5 more terms
+STORE R0, 10
+STORE R1, 11
+LOADI R4, 12      ; store address
+FIB_LOOP:
+  ADD   R2, R0, R1  ; R2 = F(n) = R0+R1
+  STORE R2, 12
+  ; shift: R0 ← R1  (XOR swap R0,R1 — no temp reg needed)
+  XOR   R0, R0, R1
+  XOR   R1, R0, R1
+  XOR   R0, R0, R1  ; R0=old R1, R1=old R0
+  ; now R0=old R1 (correct), but R1=old R0 — set R1=R2
+  XOR   R1, R1, R2
+  XOR   R2, R1, R2
+  XOR   R1, R1, R2  ; R1=old R2 (the new fib), R2=old R1 (don't care)
+  SUBI  R3, R3, 1
+  JNZ   FIB_LOOP
+HALT`,
+
+sort:`; Compare & swap: sort R0,R1 ascending
+LOADI R0, 42
+LOADI R1, 17
+; if R0 <= R1 already sorted
+SUB   R2, R0, R1   ; R2 = R0-R1
+JLT   DONE         ; if negative, R0<R1, done
+; swap via R3
+ADD   R3, R0, R1   ; R3=sum (temp trick: can't use mem here)
+SUB   R0, R3, R0   ; R0=old R1
+SUB   R1, R3, R1   ; R1=old R0
+DONE:
+STORE R0, 2
+STORE R1, 3
+HALT`,
+
+call:`; Subroutine: CALL/RET demo
+; Calls a "double" subroutine
+LOADI R0, 21      ; argument
+CALL  DOUBLE      ; call subroutine
+STORE R0, 5       ; store result (should be 42)
+HALT
+
+DOUBLE:           ; subroutine: R0 = R0 * 2
+  ADD R0, R0, R0
+  RET`,
+
+hazard:`; Data hazard demonstration
+; Watch the STALL/FORWARD badges in the pipeline
+LOADI R0, 5
+LOADI R1, 3
+ADD   R2, R0, R1   ; R2=8  (no hazard)
+ADD   R3, R2, R1   ; R3=11 (RAW hazard: R2 just written → FORWARD)
+ADD   R4, R3, R2   ; R4=19 (RAW hazard on R3 → FORWARD)
+MUL   R5, R4, R2   ; R5=152 (3-cycle MUL)
+STORE R5, 10
+HALT`,
+
+bitops:`; Bitwise operations demo
+LOADI R0, 0b11001010   ; = 202 decimal
+LOADI R1, 0b10101010   ; = 170 decimal
+AND   R2, R0, R1       ; R2 = 10001010 = 138
+OR    R3, R0, R1       ; R3 = 11101010 = 234
+XOR   R4, R0, R1       ; R4 = 01100000 = 96
+NOT   R5, R0           ; R5 = ~202
+SHL   R6, R0, 2        ; R6 = R0 << 2
+SHR   R7, R0, 1        ; R7 = R0 >> 1
+STORE R2, 20
+STORE R3, 21
+STORE R4, 22
+HALT`
+};
+
+function loadEx(k){
+  if(!k)return;
+  document.getElementById('editor').value=EX[k]||'';
+  document.getElementById('examples').value='';
+  updateLN(); doReset(); assemble();
+}
+
+// ═══════════════════════════════════════════════════════
+//  INSTRUCTION REFERENCE
+// ═══════════════════════════════════════════════════════
+const IREF = [
+  ['LOADI Rd, #imm','Rd ← imm (immediate)'],
+  ['LOAD  Rd, #addr','Rd ← mem[addr] + cache'],
+  ['ADD   Rd, Rs1, Rs2','Rd = Rs1 + Rs2'],
+  ['ADDI  Rd, Rs, #imm','Rd = Rs + imm'],
+  ['SUB   Rd, Rs1, Rs2','Rd = Rs1 − Rs2'],
+  ['SUBI  Rd, Rs, #imm','Rd = Rs − imm'],
+  ['MUL   Rd, Rs1, Rs2','Rd = Rs1 × Rs2 (3 cyc)'],
+  ['AND   Rd, Rs1, Rs2','Rd = Rs1 & Rs2'],
+  ['OR    Rd, Rs1, Rs2','Rd = Rs1 | Rs2'],
+  ['XOR   Rd, Rs1, Rs2','Rd = Rs1 ^ Rs2'],
+  ['NOT   Rd, Rs','Rd = ~Rs'],
+  ['SHL   Rd, Rs, #n','Rd = Rs << n'],
+  ['SHR   Rd, Rs, #n','Rd = Rs >> n'],
+  ['STORE Rs, #addr','mem[addr] ← Rs + cache'],
+  ['JUMP  #addr','PC ← addr'],
+  ['JZ    #addr','if Z=1 → PC ← addr'],
+  ['JNZ   #addr','if Z=0 → PC ← addr'],
+  ['JLT   #addr','if N=1 → PC ← addr'],
+  ['JGT   #addr','if N=0,Z=0 → PC ← addr'],
+  ['PUSH  Rs','mem[SP--] ← Rs'],
+  ['POP   Rd','Rd ← mem[++SP]'],
+  ['CALL  #addr','push PC; PC ← addr'],
+  ['RET','PC ← pop'],
+  ['HALT','stop'],
+];
+const colors={LOADI:'var(--blue)',LOAD:'var(--blue)',ADD:'var(--green)',ADDI:'var(--green)',SUB:'var(--orange)',SUBI:'var(--orange)',MUL:'var(--teal)',AND:'var(--cyan)',OR:'var(--cyan)',XOR:'var(--cyan)',NOT:'var(--cyan)',SHL:'var(--cyan)',SHR:'var(--cyan)',STORE:'var(--purple)',JUMP:'var(--amber)',JZ:'var(--amber)',JNZ:'var(--amber)',JLT:'var(--amber)',JGT:'var(--amber)',PUSH:'var(--orange)',POP:'var(--orange)',CALL:'var(--amber)',RET:'var(--amber)',HALT:'var(--red)'};
+const il=document.getElementById('iref-list');
+IREF.forEach(([mn,desc])=>{
+  const mn0=mn.split(' ')[0];
+  const d=document.createElement('div');d.className='iref-row';
+  d.innerHTML=`<span class="iref-mnem" style="color:${colors[mn0]||'var(--text)'}">${mn}</span><span class="iref-desc">${desc}</span>`;
+  il.appendChild(d);
+});
+
+// ═══════════════════════════════════════════════════════
+//  LINE NUMBERS + KEYBOARD
+// ═══════════════════════════════════════════════════════
+function updateLN(){
+  const n=document.getElementById('editor').value.split('\n').length;
+  document.getElementById('ln').textContent=Array.from({length:n},(_,i)=>i+1).join('\n');
+}
+const ed=document.getElementById('editor');
+ed.addEventListener('input',updateLN);
+ed.addEventListener('scroll',function(){document.getElementById('ln').style.transform=`translateY(-${this.scrollTop}px)`;});
+ed.addEventListener('keydown',function(e){
+  if(e.key==='Tab'){e.preventDefault();const s=this.selectionStart;this.value=this.value.slice(0,s)+'  '+this.value.slice(this.selectionEnd);this.selectionStart=this.selectionEnd=s+2;updateLN();}
+  if(e.ctrlKey&&e.key==='Enter'){e.preventDefault();assemble();}
+});
+document.getElementById('spd').oninput=function(){
+  document.getElementById('spd-lbl').textContent=this.value+'ms';
+  if(running){stopRun();doRun();}
+};
+
+// Init
+updateLN(); renderAll(null); updateStats();
+document.getElementById('editor').value=EX.add;
+updateLN();
+
+// ═══════════════════════════════════════════════════════
+//  AI ASSISTANT  (Google Gemini — free tier, no install)
+//  Get a free API key at https://aistudio.google.com/app/apikey
+// ═══════════════════════════════════════════════════════
+let aiLastCode = '';
+
+function toggleAI() {
+  const body = document.getElementById('ai-body');
+  const chev = document.getElementById('ai-chevron');
+  const open = body.classList.toggle('open');
+  chev.classList.toggle('open', open);
+}
+
+function aiChip(text) {
+  const body = document.getElementById('ai-body');
+  if (!body.classList.contains('open')) toggleAI();
+  document.getElementById('ai-prompt').value = text;
+  aiGenerate();
+}
+
+async function aiGenerate() {
+  const prompt = document.getElementById('ai-prompt').value.trim();
+  if (!prompt) return;
+
+  const btn    = document.getElementById('ai-btn');
+  const status = document.getElementById('ai-status');
+  const result = document.getElementById('ai-result');
+  const code   = document.getElementById('ai-result-code');
+
+  btn.disabled = true;
+  result.classList.remove('visible');
+  status.innerHTML = '<span class="ai-spinner"></span> asking Gemini…';
+
+  try {
+    const res = await fetch('/ai', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({prompt})
+    });
+    const data = await res.json();
+
+    if (data.success) {
+      aiLastCode = data.code;
+      code.className = 'ai-result-code';
+      code.textContent = data.code;
+      result.classList.add('visible');
+      status.innerHTML = '<span style="color:var(--green)">✓</span> ready — click <em>insert into editor</em> to use';
+    } else {
+      code.className = 'ai-result-err';
+      code.textContent = '⚠ ' + data.error;
+      result.classList.add('visible');
+      status.textContent = '';
+    }
+  } catch (e) {
+    code.className = 'ai-result-err';
+    code.textContent = '⚠ Network error: ' + e.message;
+    result.classList.add('visible');
+    status.textContent = '';
+  }
+
+  btn.disabled = false;
+}
+
+function aiInsert() {
+  if (!aiLastCode) return;
+  document.getElementById('editor').value = aiLastCode;
+  updateLN();
+  assemble();
+  document.getElementById('editor').scrollTop = 0;
+}
+</script>
+</body>
+</html>
